@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <title>منصة بُعد - النموذج الأولي</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: "Cairo", sans-serif; margin: 0; background: #1e272e; color: #ecf0f1; }
+    header {
+      background: linear-gradient(135deg,#6c5ce7,#00cec9);
+      padding:20px; text-align:center; font-size:24px; font-weight:bold;
+    }
+    #map { height: 45vh; width: 100%; }
+    #info { padding: 20px; }
+    .card {
+      background: #2f3640; padding: 15px; margin: 15px 0;
+      border-radius: 12px; box-shadow:0 3px 10px rgba(0,0,0,0.3);
+      transition: transform .3s;
+    }
+    .card:hover { transform: scale(1.01); }
+    .btn {
+      background: linear-gradient(135deg,#e67e22,#d35400);
+      color:white; padding: 10px 16px; border:none;
+      border-radius: 8px; cursor: pointer; font-size: 14px;
+    }
+    .btn:hover { transform: scale(1.05); }
+    .equip img { width: 90px; margin: 5px; border-radius: 8px; }
+    .timeline li {
+      margin: 8px 0; padding: 8px; background: #353b48; border-radius: 6px;
+      animation: fadeInUp .5s ease;
+    }
+    @keyframes fadeInUp { from {opacity:0; transform:translateY(20px);} to {opacity:1; transform:translateY(0);} }
+    .progress-bar { background:#353b48; border-radius:20px; overflow:hidden; height:18px; margin-top:10px; }
+    .progress-fill { height:100%; background: linear-gradient(90deg,#00cec9,#6c5ce7); width:0%; transition: width 1.5s ease; }
+    .grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(250px,1fr)); gap:15px; }
+    .notif {
+      background:#0984e3; padding:10px; border-radius:8px;
+      margin:10px 0; font-size:14px; animation: fadeInUp .7s;
+    }
+  </style>
+</head>
+<body>
+
+<header>📍 منصة بُعد - Dashboard استثماري لمكة</header>
+<div id="map"></div>
+
+<div id="info">
+  <h2>📊 التقرير المجاني</h2>
+  <div id="report" class="card">اضغط على أي موقع في الخريطة للحصول على تقرير 👇</div>
+
+  <div id="premium" class="card hidden">
+    <h3>🔒 تفاصيل إضافية</h3>
+    <p>اشترك لعرض الصخور • المدة • المعدات • Dashboard كامل</p>
+    <button class="btn" onclick="unlockPremium()">💳 اشترك الآن</button>
+  </div>
+
+  <div id="dashboard" class="hidden">
+    <div id="notifBox"></div>
+    <div class="card" id="summary"></div>
+    <div class="card" id="rocks"></div>
+    <div class="card" id="equipments"></div>
+    <div class="card">
+      <h3>⏳ الجدول الزمني</h3>
+      <ol id="timeline" class="timeline"></ol>
+      <div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+    </div>
+
+    <!-- الرسوم البيانية في Grid -->
+    <div class="grid">
+      <div class="card">
+        <h3>💰 تكلفة المعدات</h3>
+        <canvas id="costChart" height="150"></canvas>
+      </div>
+      <div class="card">
+        <h3>📊 توزيع التكاليف</h3>
+        <canvas id="donutChart" height="150"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let map;
+  const haram = { lat: 21.4225, lng: 39.8262 };
+  let currentReport = null;
+
+  const mockReports = [
+    {
+      slope: "جبلية", cost: 200000, usage: "سكني", contractor: "شركة مقاولات الحرمين",
+      equipment: [
+        { name: "🚜 حفارة صخور", img: "https://upload.wikimedia.org/wikipedia/commons/7/70/Excavator.jpg", price: 70000 },
+        { name: "🛠 جرافة", img: "https://upload.wikimedia.org/wikipedia/commons/6/6e/Bulldozer.jpg", price: 50000 },
+        { name: "🏗 معدات حفر", img: "https://upload.wikimedia.org/wikipedia/commons/f/fc/Tower_crane.jpg", price: 30000 }
+      ],
+      steps: ["📍 مسح الموقع", "⛰ كسر الصخور", "🏗 تمهيد الأرض", "🔌 توصيل الخدمات"],
+      premium: { rocks: "جرانيت + بازالت", duration: "90 يوم" }
+    },
+    {
+      slope: "مستوية", cost: 120000, usage: "تجاري", contractor: "مؤسسة مكة للبناء",
+      equipment: [
+        { name: "🚧 جرافة صغيرة", img: "https://upload.wikimedia.org/wikipedia/commons/6/6e/Bulldozer.jpg", price: 40000 },
+        { name: "🛠 معدات تمهيد", img: "https://upload.wikimedia.org/wikipedia/commons/7/70/Excavator.jpg", price: 20000 }
+      ],
+      steps: ["📍 تسوية الأرض", "🧪 اختبار التربة", "🔌 توصيل الخدمات"],
+      premium: { rocks: "تربة رملية + طينية", duration: "45 يوم" }
+    }
+  ];
+
+  function initMap() {
+    map = new google.maps.Map(document.getElementById("map"), { center: haram, zoom: 13 });
+    map.addListener("click", (e) => {
+      currentReport = mockReports[Math.floor(Math.random() * mockReports.length)];
+      document.getElementById("report").innerHTML = `
+        <b>⛰ التضاريس:</b> ${currentReport.slope} <br>
+        <b>💰 تكلفة الأرض:</b> ${currentReport.cost.toLocaleString()} ريال <br>
+        <b>🏢 الاستخدام:</b> ${currentReport.usage} <br>
+        <b>👷 المقاول:</b> ${currentReport.contractor}
+      `;
+      document.getElementById("premium").classList.remove("hidden");
+    });
+  }
+
+  function unlockPremium() {
+    if (!currentReport) return;
+    document.getElementById("dashboard").classList.remove("hidden");
+
+    // إشعار ذكي
+    document.getElementById("notifBox").innerHTML =
+      `<div class="notif">🤖 توصية: أفضل استخدام للأرض "${currentReport.usage}" لأنه يحقق عائد أعلى</div>`;
+
+    // ملخص
+    document.getElementById("summary").innerHTML = `
+      <h3>📋 ملخص</h3>
+      التضاريس: ${currentReport.slope}<br>
+      الاستخدام: ${currentReport.usage}<br>
+      المدة: ${currentReport.premium.duration}
+    `;
+
+    // الصخور
+    document.getElementById("rocks").innerHTML = `<h3>🪨 الصخور</h3>${currentReport.premium.rocks}`;
+
+    // المعدات
+    document.getElementById("equipments").innerHTML =
+      `<h3>⚒️ المعدات</h3>` + currentReport.equipment.map(eq =>
+        `<div><b>${eq.name}</b><br><img src="${eq.img}"><br>${eq.price.toLocaleString()} ريال</div>`
+      ).join("");
+
+    // Timeline
+    document.getElementById("timeline").innerHTML =
+      currentReport.steps.map(step => `<li>${step}</li>`).join("");
+    setTimeout(()=>{document.getElementById("progress").style.width="85%";},500);
+
+    // Chart 1: Bar
+    new Chart(document.getElementById("costChart"), {
+      type: "bar",
+      data: {
+        labels: currentReport.equipment.map(eq=>eq.name),
+        datasets: [{ data:currentReport.equipment.map(eq=>eq.price),
+          backgroundColor:["#e67e22","#00cec9","#6c5ce7"] }]
+      },
+      options:{ plugins:{legend:{display:false}}, responsive:true, maintainAspectRatio:false }
+    });
+
+    // Chart 2: Doughnut
+    new Chart(document.getElementById("donutChart"), {
+      type:"doughnut",
+      data:{
+        labels:["معدات","أيدي عاملة","خدمات"],
+        datasets:[{data:[currentReport.cost*0.5,currentReport.cost*0.3,currentReport.cost*0.2],
+          backgroundColor:["#0984e3","#d63031","#00b894"]}]
+      },
+      options:{ responsive:true, maintainAspectRatio:false }
+    });
+  }
+</script>
+
+<script async
+src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDILbD7Q-_PAlMYY9KbaB3JDaNx_hdoYZw&callback=initMap">
+</script>
+
+</body>
+</html>
